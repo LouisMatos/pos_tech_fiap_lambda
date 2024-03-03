@@ -23,11 +23,14 @@ jobs:
     - name: Compress Lambda function
       run: |
         zip -r lambda_function.zip src/*
-    - name: Upload to S3
-      uses: aws-actions/aws-s3-sync@v3
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
       with:
-        source: .
-        destination: s3://your-bucket-name/lambda_function.zip
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
+    - name: Upload to S3
+      uses: aws-actions/amazon-s3-copy@v1
+      with:
+        source: ./lambda_function.zip
+        destination: s3://your-bucket-name/lambda_function.zip
