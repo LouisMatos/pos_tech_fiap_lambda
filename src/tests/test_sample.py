@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from src.main import handler
+from lambda_function import handler
 
 class TestHandler(unittest.TestCase):
     @patch('src.main.requests.get')
