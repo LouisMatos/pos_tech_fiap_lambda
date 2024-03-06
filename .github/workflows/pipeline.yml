@@ -1,61 +1,42 @@
-name: Python application test
-
 on:
   push:
-    branches:
-      - dev
-  pull_request:
-    branches:
-      - dev
-  workflow_dispatch:
+      branches: [dev, master]
 
-permissions:
-  contents: read
-  pull-requests: write
+name: Lambda ECR Deployment
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.8
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r src/requirements.txt
-    - name: Run tests
-      run: |
-        python -m unittest discover -s src/tests
-    - name: Compress Lambda function
-      run: |
-        zip -r lambda_function.zip src/*
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-    - name: Deploy static site to S3 bucket
-      run: aws s3 sync ./lambda_function.zip s3://codigo-lambda
+  deploy:
+      if: github.ref == 'refs/heads/dev'
+      name: Deploy to ECR and update Lambda
+      runs-on: ubuntu-latest
 
-  build-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-      - uses: aws-actions/setup-sam@v1
-      - uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      # sam build 
-      - run: sam build --use-container
+      steps:
+          - name: Checkout
+            uses: actions/checkout@v2
 
-# Run Unit tests- Specify unit tests here 
+          - name: Configure AWS credentials
+            uses: aws-actions/configure-aws-credentials@v1
+            with:
+                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                aws-region: ${{ secrets.AWS_ACCESS_KEY_ID }}
 
-# sam deploy
-      - run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name sam-hello-world --s3-bucket codigo-lambda --capabilities CAPABILITY_IAM --region ${{ secrets.AWS_REGION }}
+          - name: Login to Amazon ECR
+            id: login-ecr
+            uses: aws-actions/amazon-ecr-login@v1
+
+          - name: Build, tag, and push the image to Amazon ECR
+            id: build-image
+            run: |
+                # Build a docker container and push it to ECR 
+                echo "Registry: ${{ vars.ECR_REGISTRY }}"
+                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ vars.ECR_REGISTRY }}
+                docker build -t ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest .
+                echo "Pushing image to ECR..."
+                docker push ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest
+                echo "name=image::${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest" >> $GITHUB_OUTPUT
+
+          - name: Update AWS Lambda function
+            id: update-lambda
+            run: |
+                aws lambda update-function-code --function-name ${{ vars.LAMBDA_FUNCTION_NAME }} --image-uri ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest
