@@ -1,9 +1,6 @@
 name: CI
 
-on:
-  pull_request:
-    types: [closed]
-    branches: [main, master]
+on: [push, pull_request]
 
 jobs:
 
