@@ -66,6 +66,9 @@ jobs:
           echo "Pushing image to ECR..."
           docker push ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest || exit 1
           echo "name=image::${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest" >> $GITHUB_OUTPUT
+          echo "::set-output name=image::${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest"
+      outputs:
+        image: ${{ steps.build-image.outputs.image }}
 
   deploy:
     needs: publish
@@ -74,4 +77,4 @@ jobs:
     - name: Update AWS Lambda function
       id: update-lambda
       run: |
-        aws lambda update-function-code --function-name lambda_cliente --image-uri ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest || exit 1
+        aws lambda update-function-code --function-name lambda_cliente --image-uri ${{ needs.publish.outputs.image }}
