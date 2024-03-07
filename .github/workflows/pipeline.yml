@@ -1,18 +1,17 @@
-name: Python application test
+name: CI
 
 on: [push, pull_request]
 
 jobs:
-  build:
 
+  unit-tests:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python 3.8
+    - name: Set up Python 3.10
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8
+        python-version: '3.10'
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -20,14 +19,76 @@ jobs:
     - name: Run tests
       run: |
         python -m unittest discover -s src/tests
-    - name: Compress Lambda function
-      run: |
-        zip -r lambda_function.zip src/*
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+
+  code-analisys:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v2
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-    - name: Deploy static site to S3 bucket
-      run: aws s3 sync ./lambda_function.zip s3://codigo-lambda
+        python-version: '3.10'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint
+    - name: Run Pylint
+      run: pylint **/*.py
+
+
+  publish:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    needs: code-analisys
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push the image to Amazon ECR
+        id: build-image
+        run: |
+          echo "Registry: ${{ vars.ECR_REGISTRY }}"
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ vars.ECR_REGISTRY }}
+          docker build -t ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest . || exit 1
+          echo "Pushing image to ECR..."
+          docker push ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest || exit 1
+          echo "name=image::${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest" >> $GITHUB_OUTPUT
+          echo "::set-output name=image::${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest"
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
+
+  deploy:
+    if: github.event.pull_request.merged == true
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Update AWS Lambda function
+        id: update-lambda
+        run: |
+          aws lambda update-function-code --function-name lambda_cliente --image-uri ${{ vars.ECR_REGISTRY }}/${{ vars.ECR_REPOSITORY }}:latest
