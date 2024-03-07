@@ -1,8 +1,9 @@
-on:
-  push:
-      branches: [dev, master]
+name: CI
 
-name: Lambda ECR Deployment
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, master]
 
 jobs:
 
@@ -40,6 +41,7 @@ jobs:
 
 
   publish:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     needs: code-analisys
     steps:
@@ -71,6 +73,7 @@ jobs:
       image: ${{ steps.build-image.outputs.image }}
 
   deploy:
+    if: github.event.pull_request.merged == true
     needs: publish
     runs-on: ubuntu-latest
     steps:
