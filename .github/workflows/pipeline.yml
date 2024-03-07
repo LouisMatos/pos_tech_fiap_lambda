@@ -77,4 +77,4 @@ jobs:
     - name: Update AWS Lambda function
       id: update-lambda
       run: |
-        aws lambda update-function-code --function-name lambda_cliente --image-uri ${{ needs.publish.outputs.dockerimage_image }}
+        aws lambda update-function-code --function-name lambda_cliente --image-uri ${{ needs.publish.outputs.image }}
