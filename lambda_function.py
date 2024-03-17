@@ -63,7 +63,7 @@ def lambda_handler(event, context):
     }
 
     # Gera o token JWT
-    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    token = PyJWT.encode(payload, SECRET_KEY, algorithm='HS256')
 
     # Retorna o token gerado como resposta
     return {
