@@ -1,9 +1,4 @@
-import json
-import boto3
-from botocore.exceptions import ClientError
 
-# Inicializa o cliente do DynamoDB
-dynamodb = boto3.resource('dynamodb')
 
 
 def pegar_cliente_lambda(event):
