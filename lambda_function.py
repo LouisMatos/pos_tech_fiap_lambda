@@ -22,5 +22,6 @@ def lambda_handler(event, context):
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": 'true',
         }
-      
+    }
+
     return json.loads(json.dumps(resp, default=str))
