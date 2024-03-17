@@ -6,6 +6,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
+    logger.info(event)
     body = json.loads(event.get('body', '{}'))
     logger.info(body)
 
@@ -13,7 +14,7 @@ def lambda_handler(event, context):
 
     logger.info(cpf)
 
-    return {
+    resp = {
         "statusCode": 200,
         "body": cpf,
         "headers": {
@@ -21,4 +22,5 @@ def lambda_handler(event, context):
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": 'true',
         }
-    }
+      
+    return json.loads(json.dumps(resp, default=str))
