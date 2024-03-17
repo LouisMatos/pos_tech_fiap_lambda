@@ -5,18 +5,11 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
-    if 'cpf' not in event:
-        return {
-            "statusCode": 400,
-            "body": "Missing 'cpf' in the request",
-            headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Credentials": True,
-            }
-        }
 
-    cpf = event['cpf']
+    body = json.loads(event.get('body', '{}'))
+    logger.info(body)
+
+    cpf = body.get('cpf', '00000000000')
 
     logger.info(cpf)
 
