@@ -2,7 +2,6 @@ from src.lambda_gera_jwt import gerar_token_jwt_lambda
 from src.lambda_pega_cliente import pegar_cliente_lambda
 from src.lambda_salva_cliente import salvar_cliente_lambda
 
-
 def lambda_handler(event, context):
 
     # Extrai a rota e o método HTTP do evento
