@@ -29,15 +29,15 @@ def lambda_handler(event, context):
     # Verifica se a rota contém "/cliente" e o método é "POST"
     elif "/cliente" in rota and metodo_http == "POST":
         # Chama o método pegar_cliente_lambda e retorna a resposta
-        return pegar_cliente_lambda(event)
+        return salvar_cliente_lambda(event)
 
     # Verifica se a rota contém "/cliente/{cpf}" e o método é "GET"
 #    else "/cliente/" in rota and metodo_http == "GET":
-    else :
+    elif "/cliente/" in rota and metodo_http == "GET":
         # Chama o método salvar_cliente_lambda e retorna a resposta
-        return salvar_cliente_lambda(event)
+        return pegar_cliente_lambda(event)
 
-    # Rota não encontrada ----------------------------------------------
+
 def validar_cpf(cpf):
     # Remove caracteres não numéricos
     cpf = re.sub('[^0-9]', '', cpf)
