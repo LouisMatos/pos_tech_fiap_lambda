@@ -22,7 +22,7 @@ def lambda_handler(event, context):
     print(f'Rota: {rota}, Método HTTP: {metodo_http}')
 
     # Verifica se a rota contém "/jwt" e o método é "GET"
-    if "/jwt" in rota and metodo_http == "GET":
+    if "/jwt" in rota and metodo_http == "POST":
         # Chama o método gerar_token_jwt_lambda e retorna a resposta
         return gerar_token_jwt_lambda(event)
 
