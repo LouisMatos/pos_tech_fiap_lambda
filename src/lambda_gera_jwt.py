@@ -29,7 +29,7 @@ def validar_cpf(cpf):
     return True
 
 
-def gerar_token_jwt_lambda(event, context):
+def gerar_token_jwt_lambda(event):
     print("Received event:", event)  # Para propósitos de depuração
 
     # Verifica se 'body' está presente no evento e se ele é uma string
@@ -70,4 +70,3 @@ def gerar_token_jwt_lambda(event, context):
         'statusCode': 200,
         'body': json.dumps({'token': token})
     }
-

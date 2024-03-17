@@ -33,7 +33,7 @@ def verify_jwt(token):
     except jwt.InvalidTokenError:
         return {'error': 'Invalid token'}
 
-def salvar_cliente_lambda(event, context):
+def salvar_cliente_lambda(event):
     headers = event.get('headers', {})
     token = next((value.split(' ')[1] for key, value in headers.items() if key.lower() == 'authorization'), None)
 

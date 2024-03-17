@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 dynamodb = boto3.resource('dynamodb')
 
 
-def pegar_cliente_lambda(event, context):
+def pegar_cliente_lambda(event):
     # Nome da tabela DynamoDB
     table_name = 'Customers'
     table = dynamodb.Table(table_name)
