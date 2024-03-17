@@ -10,6 +10,7 @@ FROM public.ecr.aws/lambda/python:3.9
 COPY ./src/requirements.txt ./
 RUN pip3 install --upgrade pip
 RUN pip3 install -r ./requirements.txt
+RUN pip3 install -U pyjwt
 COPY lambda_function.py ./
 
 CMD [ "lambda_function.lambda_handler" ]

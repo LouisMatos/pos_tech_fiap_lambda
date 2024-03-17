@@ -1,5 +1,5 @@
 import json
-from jwt import PyJWT
+import jwt
 import datetime
 import os
 import re
