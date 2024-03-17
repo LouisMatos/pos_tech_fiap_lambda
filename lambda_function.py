@@ -1,11 +1,14 @@
+from wsgiref import headers
+
 import requests
 import logging
+import json
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
 def lambda_handler(event, context):
-  
     body = json.loads(event.get('body', '{}'))
     logger.info(body)
 
@@ -19,6 +22,6 @@ def lambda_handler(event, context):
         headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Credentials": true,
+            "Access-Control-Allow-Credentials": 'true',
         }
     }
