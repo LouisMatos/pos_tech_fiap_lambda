@@ -1,5 +1,5 @@
 import json
-from jwt import PyJWT
+import jwt
 import datetime
 import os
 import re
@@ -63,7 +63,7 @@ def lambda_handler(event, context):
     }
 
     # Gera o token JWT
-    token = PyJWT.encode(payload, SECRET_KEY, algorithm='HS256')
+    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
     # Retorna o token gerado como resposta
     return {
