@@ -1,17 +1,9 @@
-import json
-import jwt
 import datetime
-import os
-import re
-import json
-import boto3
-from botocore.exceptions import ClientError
 import json
 import boto3
 import re
 import os
 import jwt
-from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 # Inicializa o cliente do DynamoDB
@@ -40,7 +32,8 @@ def lambda_handler(event, context):
         return pegar_cliente_lambda(event)
 
     # Verifica se a rota contém "/cliente/{cpf}" e o método é "GET"
-    elif "/cliente/" in rota and metodo_http == "GET":
+#    else "/cliente/" in rota and metodo_http == "GET":
+    else :
         # Chama o método salvar_cliente_lambda e retorna a resposta
         return salvar_cliente_lambda(event)
 
@@ -144,15 +137,15 @@ def pegar_cliente_lambda(event):
             'body': json.dumps({'message': 'Erro ao buscar informações no banco de dados.'})
         }
 
-def validar_email(email):
+def validar_email_1(email):
     regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(regex, email) is not None
 
-def validar_nome(nome):
+def validar_nome_1(nome):
     regex = r'^[A-Za-záàâãéèêíïóôõöúçñÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ ]+$'
     return re.match(regex, nome) is not None
 
-def validar_cpf(cpf):
+def validar_cpf_1(cpf):
     cpf = re.sub('[^0-9]', '', cpf)  # Remove caracteres não numéricos
     return len(cpf) == 11
 
@@ -205,12 +198,12 @@ def salvar_cliente_lambda(event):
             'statusCode': 400,
             'body': json.dumps({'message': 'CPF inválido. O CPF deve conter 11 dígitos numéricos.'})
         }
-    if not validar_email(email):
+    if not validar_email_1(email):
         return {
             'statusCode': 400,
             'body': json.dumps({'message': 'Email Invalido.'})
         }
-    if not validar_nome(nome):
+    if not validar_nome_1(nome):
         return {
             'statusCode': 400,
             'body': json.dumps({'message': 'Nome invalido. O nome não deve conter numeros ou caracteres especiais.'})
