@@ -1,19 +1,22 @@
 import datetime
 import json
-import boto3
-import re
 import os
+import re
+
+import boto3
 import jwt
 from botocore.exceptions import ClientError
 
 # Inicializa o cliente do DynamoDB
 dynamodb = boto3.resource('dynamodb')
 
-# Defina sua chave secreta de forma segura
-SECRET_KEY = os.environ.get('JWT_SECRET', 'FIAP123')
+# Nome da tabela varia por ambiente (Customers-dev/hom/prod) - ver pos_tech_fiap_db/envs
+TABLE_NAME = os.environ['DYNAMODB_TABLE_NAME']
 
-def lambda_handler(event, context):
+# Sem default inseguro - falha explicito se a env var nao estiver setada no ambiente
+SECRET_KEY = os.environ['JWT_SECRET']
 
+def lambda_handler(event, context):  # pylint: disable=unused-argument
     # Extrai a rota e o método HTTP do evento
     rota = event['resource']
     metodo_http = event['httpMethod']
@@ -21,21 +24,23 @@ def lambda_handler(event, context):
     # Imprime a rota e o método HTTP
     print(f'Rota: {rota}, Método HTTP: {metodo_http}')
 
-    # Verifica se a rota contém "/jwt" e o método é "GET"
+    # Verifica se a rota contém "/jwt" e o método é "POST"
     if "/jwt" in rota and metodo_http == "POST":
         # Chama o método gerar_token_jwt_lambda e retorna a resposta
         return gerar_token_jwt_lambda(event)
 
     # Verifica se a rota contém "/cliente" e o método é "POST"
-    elif "/cliente" in rota and metodo_http == "POST":
+    if "/cliente" in rota and metodo_http == "POST":
         # Chama o método pegar_cliente_lambda e retorna a resposta
         return salvar_cliente_lambda(event)
 
     # Verifica se a rota contém "/cliente/{cpf}" e o método é "GET"
-#    else "/cliente/" in rota and metodo_http == "GET":
-    elif "/cliente/" in rota and metodo_http == "GET":
+    if "/cliente/" in rota and metodo_http == "GET":
         # Chama o método salvar_cliente_lambda e retorna a resposta
         return pegar_cliente_lambda(event)
+
+    # Rota/método sem handler correspondente
+    return None
 
 
 def validar_cpf(cpf):
@@ -104,9 +109,7 @@ def gerar_token_jwt_lambda(event):
 
 # Path: src/lambda_salva_cliente.py
 def pegar_cliente_lambda(event):
-    # Nome da tabela DynamoDB
-    table_name = 'Customers'
-    table = dynamodb.Table(table_name)
+    table = dynamodb.Table(TABLE_NAME)
 
     # Extrai o CPF do parâmetro de caminho da requisição
     cpf = event['pathParameters']['cpf']
@@ -123,12 +126,11 @@ def pegar_cliente_lambda(event):
                 'statusCode': 200,
                 'body': json.dumps(response['Item'])
             }
-        else:
-            # Cliente não encontrado
-            return {
-                'statusCode': 404,
-                'body': json.dumps({'message': 'Cliente não encontrado.'})
-            }
+        # Cliente não encontrado
+        return {
+            'statusCode': 404,
+            'body': json.dumps({'message': 'Cliente não encontrado.'})
+        }
     except ClientError as e:
         print(e.response['Error']['Message'])
         # Erro ao acessar o DynamoDB
@@ -161,7 +163,10 @@ def verify_jwt(token):
 # Path: src/lambda_salva_cliente.py
 def salvar_cliente_lambda(event):
     headers = event.get('headers', {})
-    token = next((value.split(' ')[1] for key, value in headers.items() if key.lower() == 'authorization'), None)
+    token = next(
+        (value.split(' ')[1] for key, value in headers.items() if key.lower() == 'authorization'),
+        None
+    )
 
     if token is None:
         return {
@@ -206,10 +211,12 @@ def salvar_cliente_lambda(event):
     if not validar_nome_1(nome):
         return {
             'statusCode': 400,
-            'body': json.dumps({'message': 'Nome invalido. O nome não deve conter numeros ou caracteres especiais.'})
+            'body': json.dumps(
+                {'message': 'Nome invalido. O nome não deve conter numeros ou caracteres especiais.'}
+            )
         }
 
-    table = dynamodb.Table('Customers')
+    table = dynamodb.Table(TABLE_NAME)
     try:
         response = table.get_item(Key={'cpf': cpf})
         if 'Item' in response:
@@ -234,4 +241,7 @@ def salvar_cliente_lambda(event):
         }
     except ClientError as e:
         print(e.response['Error']['Message'])
-        return {'statusCode': 500, 'body': json.dumps({'message': 'Error inserting customer into DynamoDB.'})}
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'message': 'Error inserting customer into DynamoDB.'})
+        }

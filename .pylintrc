@@ -1,0 +1,12 @@
+[MESSAGES CONTROL]
+# missing-*-docstring: this is a small, single-file Lambda handler, not a
+# library - docstrings add noise without value here.
+# too-many-return-statements: salvar_cliente_lambda intentionally does early
+# validation returns; splitting it up would hurt readability more than it helps.
+disable=missing-module-docstring,
+        missing-function-docstring,
+        missing-class-docstring,
+        too-many-return-statements
+
+[FORMAT]
+max-line-length=110
