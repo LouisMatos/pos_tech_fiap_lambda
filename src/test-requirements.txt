@@ -3,3 +3,4 @@ pytest-cov
 pylint
 bandit
 pip-audit
+boto3

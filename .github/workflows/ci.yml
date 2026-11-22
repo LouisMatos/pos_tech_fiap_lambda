@@ -1,0 +1,192 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, "release/**", master]
+  push:
+    branches: ["feature/**", develop, "release/**", master]
+
+permissions:
+  contents: write
+  id-token: write   # necessario para OIDC (aws-actions/configure-aws-credentials)
+  pull-requests: write
+
+jobs:
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r src/requirements.txt -r src/test-requirements.txt
+    - name: Run tests
+      env:
+        JWT_SECRET: test-secret-not-for-real-use
+        DYNAMODB_TABLE_NAME: Customers-test
+      run: |
+        pytest --cov=lambda_function --cov-report=xml --cov-report=term --cov-fail-under=85 src/tests/
+
+  code-analisys:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r src/requirements.txt -r src/test-requirements.txt
+    - name: Run Pylint
+      run: pylint lambda_function.py --fail-under=9.5
+    - name: Run Bandit (SAST)
+      run: bandit -r . --exclude ./.git,./src/tests -ll
+    - name: Run pip-audit (dependency vulnerabilities)
+      run: pip-audit -r src/requirements.txt
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: code-analisys
+    outputs:
+      image_tag: ${{ steps.image.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-pos_tech_fiap_lambda
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push the image to Amazon ECR
+        id: image
+        run: |
+          IMAGE_TAG="sha-${{ github.sha }}"
+          docker build -t "${{ steps.login-ecr.outputs.registry }}/jlapp-lambda:${IMAGE_TAG}" .
+          docker push "${{ steps.login-ecr.outputs.registry }}/jlapp-lambda:${IMAGE_TAG}"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+  # PR automatico feature/* -> develop, apos os gates passarem.
+  open-pr-to-develop:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
+    needs: [unit-tests, code-analisys]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Abre PR feature -> develop (idempotente)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base develop --state open --json number --jq '.[0].number')
+          if [ -z "$existing" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$BRANCH" \
+              --title "feat: ${BRANCH#feature/}" \
+              --body "PR automatico apos pipeline 1 (testes + lint + bandit + pip-audit) passar."
+          else
+            echo "PR #$existing ja aberto $BRANCH -> develop, nada a fazer"
+          fi
+
+  # Merge em develop: resolve/cria release/N ativa e abre PR develop -> release/N.
+  open-pr-to-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [unit-tests, code-analisys]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve release ativa ou cria nova, abre PR develop -> release/N
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin 'refs/heads/release/*:refs/remotes/origin/release/*' --prune
+
+          max_n=0
+          active_n=""
+          for ref in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
+            n="${ref##*/release/}"
+            case "$n" in ''|*[!0-9]*) continue ;; esac
+            [ "$n" -gt "$max_n" ] && max_n=$n
+            if ! git merge-base --is-ancestor "origin/release/$n" origin/master; then
+              if [ -n "$active_n" ]; then
+                echo "::warning::mais de uma release ativa encontrada (release/$active_n e release/$n) - investigar manualmente"
+              fi
+              active_n=$n
+            fi
+          done
+
+          if [ -n "$active_n" ]; then
+            target="release/$active_n"
+            echo "Reutilizando release ativa: $target"
+          else
+            target="release/$((max_n + 1))"
+            git checkout -b "$target" origin/master
+            git push origin "$target"
+            echo "Nova release criada: $target"
+          fi
+
+          existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --head develop --base "$target" --state open --json number --jq '.[0].number')
+          if [ -z "$existing" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base "$target" --head develop \
+              --title "release: develop -> $target" \
+              --body "PR automatico: consolida develop na release ativa."
+          else
+            echo "PR #$existing ja aberto develop -> $target, nada a fazer"
+          fi
+
+  # Valida "pacote" antes de abrir PR pra master: imagem precisa existir no ECR.
+  validate-package:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-pos_tech_fiap_lambda
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Confirma imagem publicada no ECR
+        run: |
+          aws ecr describe-images --repository-name jlapp-lambda \
+            --image-ids imageTag=${{ needs.publish.outputs.image_tag }} > /dev/null
+
+  # Merge em release/N com pacote validado: abre PR release/N -> master.
+  open-pr-to-master:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')
+    needs: validate-package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Abre PR release/N -> master (idempotente)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base master --state open --json number --jq '.[0].number')
+          if [ -z "$existing" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base master --head "$BRANCH" \
+              --title "release: $BRANCH -> master" \
+              --body "Pacote validado: imagem publicada no ECR. Deploy manual disponivel via deploy.yml apos o merge."
+          else
+            echo "PR #$existing ja aberto $BRANCH -> master, nada a fazer"
+          fi

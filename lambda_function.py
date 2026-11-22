@@ -66,8 +66,6 @@ def validar_cpf(cpf):
 
 # Path: src/lambda_gera_jwt.py
 def gerar_token_jwt_lambda(event):
-    print("Received event:", event)  # Para propósitos de depuração
-
     # Verifica se 'body' está presente no evento e se ele é uma string
     if 'body' in event and event['body']:
         try:
@@ -218,28 +216,21 @@ def salvar_cliente_lambda(event):
 
     table = dynamodb.Table(TABLE_NAME)
     try:
-        response = table.get_item(Key={'cpf': cpf})
-        if 'Item' in response:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'message': 'CPF já cadastrado.'})
-            }
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-        return {'statusCode': 500, 'body': json.dumps({'message': 'Erro de acesso ao DynamoDB.'})}
-
-    try:
-        item = {
-            'cpf': cpf,
-            'nome': nome,
-            'email': email
-        }
-        table.put_item(Item=item)
+        # put condicional: 1 chamada no lugar de get_item + put_item
+        table.put_item(
+            Item={'cpf': cpf, 'nome': nome, 'email': email},
+            ConditionExpression='attribute_not_exists(cpf)'
+        )
         return {
             'statusCode': 200,
             'body': json.dumps({'message': ' Criado com sucesso.'})
         }
     except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'message': 'CPF já cadastrado.'})
+            }
         print(e.response['Error']['Message'])
         return {
             'statusCode': 500,
