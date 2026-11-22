@@ -1,0 +1,79 @@
+name: Deploy
+
+# Deploy manual dedicado. Nunca dispara sozinho - so via "Run workflow" (workflow_dispatch).
+# CI (ci.yml) testa/publica a imagem automaticamente; fazer deploy em qualquer
+# ambiente (dev/hom/prod) e sempre acao humana.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente alvo'
+        required: true
+        type: choice
+        options:
+          - dev
+          - hom
+          - prod
+      image_tag:
+        description: 'Tag da imagem ja publicada no ECR (ex: sha-<commit>)'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+
+  # dev: fast-path direto na Lambda, sem terraform apply - agilidade de iteracao.
+  deploy-dev-fastpath:
+    if: inputs.environment == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-pos_tech_fiap_lambda
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Update AWS Lambda function (fast-path dev)
+        run: |
+          aws lambda update-function-code \
+            --function-name jlapp-lambda-cliente-dev \
+            --image-uri ${{ steps.login-ecr.outputs.registry }}/jlapp-lambda:${{ inputs.image_tag }}
+
+  # hom/prod: deploy via Terraform (pos_tech_fiap_lambda_terraform), evita drift
+  # entre a imagem atualizada direto na Lambda e o image_uri gerenciado pelo state.
+  deploy-via-terraform:
+    if: inputs.environment == 'hom' || inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout pos_tech_fiap_lambda_terraform
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/pos_tech_fiap_lambda_terraform
+          path: infra
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-pos_tech_fiap_lambda_terraform
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform apply
+        working-directory: infra
+        run: |
+          ENV="${{ inputs.environment }}"
+          terraform init -backend-config="envs/${ENV}-backend.hcl"
+          terraform workspace select -or-create "$ENV"
+          terraform apply -auto-approve \
+            -var-file="envs/${ENV}.tfvars" \
+            -var="imagem_name=jlapp-lambda:${{ inputs.image_tag }}"
