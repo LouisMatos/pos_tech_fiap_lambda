@@ -3,6 +3,7 @@ import json
 from unittest.mock import patch, MagicMock
 
 import jwt
+from botocore.exceptions import ClientError
 
 import lambda_function as lf
 
@@ -156,7 +157,6 @@ def _valid_token():
 @patch('lambda_function.dynamodb')
 def test_lambda_handler_cliente_route_success(mock_dynamodb):
     mock_table = MagicMock()
-    mock_table.get_item.return_value = {}  # cliente ainda nao existe
     mock_dynamodb.Table.return_value = mock_table
 
     event = {
@@ -207,7 +207,8 @@ def test_salvar_cliente_lambda_missing_fields(mock_dynamodb):
 @patch('lambda_function.dynamodb')
 def test_salvar_cliente_lambda_already_exists(mock_dynamodb):
     mock_table = MagicMock()
-    mock_table.get_item.return_value = {'Item': {'cpf': '52998224725'}}
+    mock_table.put_item.side_effect = ClientError(
+        {'Error': {'Code': 'ConditionalCheckFailedException', 'Message': 'exists'}}, 'PutItem')
     mock_dynamodb.Table.return_value = mock_table
 
     event = {
